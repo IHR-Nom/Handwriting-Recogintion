@@ -76,6 +76,10 @@ def main():
     data = data_class(args)
     model = model_class(data_config=data.config(), args=args)
 
+    # 1. Start a new run
+    wandb.init(project='handwriting-recognition', entity='ttahong1803')
+
+
     if args.loss not in ("ctc", "transformer"):
         lit_model_class = lit_models.BaseLitModel
     # Hide lines below until Lab 3
