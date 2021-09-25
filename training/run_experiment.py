@@ -104,7 +104,7 @@ def main():
         logger.log_hyperparams(vars(args))
     # Hide lines above until Lab 5
 
-    early_stopping_callback = pl.callbacks.EarlyStopping(monitor="val_cer", mode="min", patience=10)
+    early_stopping_callback = pl.callbacks.EarlyStopping(monitor="val_loss", mode="min", patience=10)
     model_checkpoint_callback = pl.callbacks.ModelCheckpoint(
         filename="{epoch:03d}-{val_loss:.3f}-{val_cer:.3f}", monitor="val_loss", mode="min"
     )

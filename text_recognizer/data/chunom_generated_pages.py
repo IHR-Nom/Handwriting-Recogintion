@@ -1,31 +1,30 @@
 """ChuNom Generated Pages Dataset class."""
 import csv
 import glob
-import math
 import os
-from typing import Any, List, Sequence, Tuple
 import random
-from PIL import Image, ImageOps, ImageDraw, ImageFont
-import numpy as np
+from typing import Any, List, Sequence, Tuple
 
+import numpy as np
+from PIL import Image, ImageOps, ImageDraw, ImageFont
+
+from text_recognizer.data.base_data_module import BaseDataModule, load_and_print_info
 from text_recognizer.data.chunom_pages import (
     ChuNomPages,
     get_dataset_properties,
     get_transform,
     NEW_LINE_TOKEN,
-    TAB_TOKEN, TRAIN_FRAC, VAL_FRAC, IMAGE_WIDTH, IMAGE_HEIGHT,
+    TAB_TOKEN, TRAIN_FRAC, VAL_FRAC, IMAGE_WIDTH, IMAGE_HEIGHT, TEST_FRAC,
 )
-
 from text_recognizer.data.iam_lines import save_images_and_labels, load_line_crops_and_labels
-from text_recognizer.data.base_data_module import BaseDataModule, load_and_print_info
 from text_recognizer.data.util import BaseDataset, convert_strings_to_labels
 
-PROCESSED_DATA_DIRNAME = BaseDataModule.data_dirname() / "processed_01" / "chunom_generated_pages"
+PROCESSED_DATA_DIRNAME = BaseDataModule.data_dirname() / "processed_02" / "chunom_generated_pages"
 RAW_DATA_DIRNAME = "/data1/hong/datasets/chunom/nlp/nlp_data.csv"
 FONT_DIRNAME = "/data1/hong/nom_fonts"
 
-MAX_PATCH_HEIGHT = 290
-MAX_PATCH_WIDTH = 48
+MAX_PATCH_HEIGHT = 250
+MAX_PATCH_WIDTH = 35
 
 
 class ChuNomGeneratedPages(ChuNomPages):
@@ -63,7 +62,7 @@ class ChuNomGeneratedPages(ChuNomPages):
 
         def _load_dataset(split: str, augment: bool) -> BaseDataset:
             crops, labels = load_line_crops_and_labels(split, PROCESSED_DATA_DIRNAME)
-            X, page_labels = generate_generated_pages(patch_crops=crops, patch_labels=labels)
+            X, page_labels = generate_generated_pages(patch_crops=crops, patch_labels=labels, split=split)
             Y = convert_strings_to_labels(strings=page_labels, mapping=self.inverse_mapping, length=self.output_dims[0])
             transform = get_transform(image_shape=self.dims[1:], augment=augment)  # type: ignore
             return BaseDataset(X, Y, transform=transform)
@@ -133,7 +132,7 @@ def generate_patch(patch_label):
 
 
 def generate_generated_pages(
-        patch_crops: List[Image.Image], patch_labels: List[str], max_batch_size: int = 16
+        patch_crops: List[Image.Image], patch_labels: List[str], split, max_batch_size: int = 20
 ) -> Tuple[List[Image.Image], List[str]]:
     """Generate generated pages and corresponding labels by randomly joining different subsets of crops."""
     paragraph_properties = get_dataset_properties()
@@ -141,16 +140,30 @@ def generate_generated_pages(
     indices = list(range(len(patch_labels)))
     assert (max_batch_size/2) < paragraph_properties["num_lines"]["max"]
 
-    batched_indices_list = [[_] for _ in indices]
-    batched_indices_list.extend(
-        generate_random_batches(values=indices, min_batch_size=2, max_batch_size=max_batch_size // 2)
-    )
-    batched_indices_list.extend(
-        generate_random_batches(values=indices, min_batch_size=2, max_batch_size=max_batch_size)
-    )
-    batched_indices_list.extend(
-        generate_random_batches(values=indices, min_batch_size=(max_batch_size // 2) + 1, max_batch_size=max_batch_size)
-    )
+    max_num_batches: int = 1000
+    if split == "train":
+        max_num_batches *= TRAIN_FRAC
+    elif split == "val":
+        max_num_batches *= VAL_FRAC
+    elif split == "test":
+        max_num_batches *= TEST_FRAC
+
+    batched_indices_list = [[_] for _ in range(0, min(len(indices), int(max_num_batches)))]  # batch_size = 1, len = 4001
+    for i in range(2, max_batch_size + 1):
+        batched_indices_list.extend(
+            generate_random_batches(values=indices, num_values=i, max_num_batches=max_num_batches)
+        )
+
+    # batched_indices_list = [[_] for _ in indices]
+    # batched_indices_list.extend(
+    #     generate_random_batches(values=indices, min_batch_size=2, max_batch_size=max_batch_size // 2)
+    # )
+    # batched_indices_list.extend(
+    #     generate_random_batches(values=indices, min_batch_size=2, max_batch_size=max_batch_size)
+    # )
+    # batched_indices_list.extend(
+    #     generate_random_batches(values=indices, min_batch_size=(max_batch_size // 2) + 1, max_batch_size=max_batch_size)
+    # )
     # assert sorted(list(itertools.chain(*batched_indices_list))) == indices
 
     unique, counts = np.unique([len(_) for _ in batched_indices_list], return_counts=True)
@@ -186,45 +199,50 @@ def generate_generated_pages(
 
 def join_batch_crops_to_form_page(patch_crops: Sequence[Image.Image]) -> Image.Image:
     """Horizontally stack line crops and return a single image forming the paragraph."""
-    # crop_shapes = np.array([_.size[::-1] for _ in patch_crops])
-    # max_patch_height = crop_shapes[:, 0].max()
-    # max_patch_width = crop_shapes[:, 1].max()
 
-    # para_height = max_patch_height * (math.ceil(len(patch_crops) / 2))
-    # if len(patch_crops) < 2:
-    #     para_width = max_patch_width + indent
-    # else:
-    #     para_width = max_patch_width * 2 + indent
-    indent = random.randint(int(MAX_PATCH_HEIGHT * 0.005), int(MAX_PATCH_HEIGHT * 0.01))
-    para_image = Image.new(mode="L", size=(IMAGE_WIDTH, IMAGE_HEIGHT), color=0)
+    page_image = Image.new(mode="L", size=(IMAGE_WIDTH, IMAGE_HEIGHT), color=0)
     current_height = 0
     for i in range(0, len(patch_crops)):
         if i % 2 == 0:
-            para_image.paste(patch_crops[i], box=(0, current_height))
+            page_image.paste(patch_crops[i], box=(0, current_height))
         else:
-            para_image.paste(patch_crops[i], box=(IMAGE_WIDTH - MAX_PATCH_HEIGHT - indent, current_height))
+            page_image.paste(patch_crops[i], box=(IMAGE_WIDTH - MAX_PATCH_HEIGHT, current_height))
             current_height += MAX_PATCH_WIDTH
-    return para_image
+    return page_image
 
 
-def generate_random_batches(values: List[Any], min_batch_size: int, max_batch_size: int, repeat=1) -> List[List[Any]]:
+def generate_random_batches(values: List[Any], num_values: int, max_num_batches: int) -> List[List[Any]]:
     """
     Generate random batches of elements in values without replacement and return the list of all batches. Batch sizes
     can be anything between min_batch_size and max_batch_size including the end points.
     """
+    # shuffled_values = values.copy()
+    # random.shuffle(shuffled_values)
+    #
+    # grouped_values_list = []
+    # for i in range(0, repeat):
+    #     start_id = 0
+    #     while start_id < len(shuffled_values):
+    #         num_values = random.randint(min_batch_size, max_batch_size)
+    #         grouped_values_list.append(shuffled_values[start_id: start_id + num_values])
+    #         start_id += num_values
+    #     assert sum([len(_) for _ in grouped_values_list]) == len(values)
+    # return grouped_values_list
     shuffled_values = values.copy()
-    random.shuffle(shuffled_values)
-
     grouped_values_list = []
-    for i in range(0, repeat):
+
+    while len(grouped_values_list) < max_num_batches:
+        random.shuffle(shuffled_values)
         start_id = 0
-        while start_id < len(shuffled_values):
-            num_values = random.randint(min_batch_size, max_batch_size)
+        while start_id < len(shuffled_values) and len(grouped_values_list) < max_num_batches:
             grouped_values_list.append(shuffled_values[start_id: start_id + num_values])
             start_id += num_values
-    # assert sum([len(_) for _ in grouped_values_list]) == len(values)
     return grouped_values_list
 
 
 if __name__ == "__main__":
     load_and_print_info(ChuNomGeneratedPages)
+    crops, labels = load_line_crops_and_labels("train", PROCESSED_DATA_DIRNAME)
+    X, page_labels = generate_generated_pages(patch_crops=crops, patch_labels=labels, split="train")
+    X[10000].save("test.png")
+    print(page_labels[10000])
