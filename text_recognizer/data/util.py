@@ -1,6 +1,7 @@
 """Base Dataset class."""
 import os
 from typing import Any, Callable, Dict, Sequence, Tuple, Union
+import numpy as np
 import torch
 
 
