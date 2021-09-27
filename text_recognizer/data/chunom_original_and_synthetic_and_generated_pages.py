@@ -14,7 +14,7 @@ class ChuNomOriginalAndSyntheticAndGeneratedPages(BaseDataModule):
         super().__init__(args)
 
         self.chunom_pages = ChuNomPages(args)
-        self.chunom_syn_pages = ChuNomSyntheticPages(args)
+        # self.chunom_syn_pages = ChuNomSyntheticPages(args)
         self.chunom_gen_pages = ChuNomGeneratedPages(args)
 
         self.dims = self.chunom_pages.dims
@@ -30,12 +30,12 @@ class ChuNomOriginalAndSyntheticAndGeneratedPages(BaseDataModule):
 
     def prepare_data(self, *args, **kwargs) -> None:
         self.chunom_pages.prepare_data()
-        self.chunom_syn_pages.prepare_data()
+        # self.chunom_syn_pages.prepare_data()
         self.chunom_gen_pages.prepare_data()
 
     def setup(self, stage: str = None) -> None:
         self.chunom_pages.setup(stage)
-        self.chunom_syn_pages.setup(stage)
+        # self.chunom_syn_pages.setup(stage)
         self.chunom_gen_pages.setup(stage)
 
         self.data_train = ConcatDataset([self.chunom_gen_pages.data_train])

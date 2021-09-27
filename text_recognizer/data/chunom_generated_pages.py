@@ -24,7 +24,7 @@ RAW_DATA_DIRNAME = "/data1/hong/datasets/chunom/nlp/nlp_data.csv"
 FONT_DIRNAME = "/data1/hong/nom_fonts"
 
 MAX_PATCH_HEIGHT = 250
-MAX_PATCH_WIDTH = 35
+MAX_PATCH_WIDTH = 45
 
 
 class ChuNomGeneratedPages(ChuNomPages):
@@ -103,7 +103,7 @@ def generate_patch_crops_and_labels():
         header = next(reader)
         if header is not None:
             for line in reader:
-                if len(crops) < 15000:
+                if len(crops) < 300000:
                     patches = [line[0][i: i + max_patch_len] for i in range(0, len(line[0]), max_patch_len)]
                     for patch in patches:
                         labels.append(patch)
@@ -125,9 +125,12 @@ def generate_patch(patch_label):
     font = ImageFont.truetype(random_font, random_font_size)
     w, h = drawer.textsize(patch_label[0], font=font)
     y = random.randint(int(h * 3 / 100), int(h * 6 / 100))
+
     for char in patch_label:
         drawer.text(((MAX_PATCH_WIDTH - w) / 2, y), char, font=font, align='center', fill='#FFF')
-        y = y + h
+        # We need to add a small space between characters, otherwise the characters will sit just next to each other
+        # And not be able to distinguish anymore
+        y = y + h + 3
     return image
 
 
@@ -140,30 +143,36 @@ def generate_generated_pages(
     indices = list(range(len(patch_labels)))
     assert (max_batch_size/2) < paragraph_properties["num_lines"]["max"]
 
-    max_num_batches: int = 1000
-    if split == "train":
-        max_num_batches *= TRAIN_FRAC
-    elif split == "val":
-        max_num_batches *= VAL_FRAC
-    elif split == "test":
-        max_num_batches *= TEST_FRAC
+    # max_num_batches: int = 1000
+    # if split == "train":
+    #     max_num_batches *= TRAIN_FRAC
+    # elif split == "val":
+    #     max_num_batches *= VAL_FRAC
+    # elif split == "test":
+    #     max_num_batches *= TEST_FRAC
 
-    batched_indices_list = [[_] for _ in range(0, min(len(indices), int(max_num_batches)))]  # batch_size = 1, len = 4001
-    for i in range(2, max_batch_size + 1):
-        batched_indices_list.extend(
-            generate_random_batches(values=indices, num_values=i, max_num_batches=max_num_batches)
-        )
+    # batched_indices_list = [[_] for _ in range(0, min(len(indices), int(max_num_batches)))]  # batch_size = 1, len = 4001
+    # for i in range(2, max_batch_size + 1):
+    #     batched_indices_list.extend(
+    #         generate_random_batches(values=indices, num_values=i, max_num_batches=max_num_batches)
+    #     )
 
-    # batched_indices_list = [[_] for _ in indices]
-    # batched_indices_list.extend(
-    #     generate_random_batches(values=indices, min_batch_size=2, max_batch_size=max_batch_size // 2)
-    # )
-    # batched_indices_list.extend(
-    #     generate_random_batches(values=indices, min_batch_size=2, max_batch_size=max_batch_size)
-    # )
-    # batched_indices_list.extend(
-    #     generate_random_batches(values=indices, min_batch_size=(max_batch_size // 2) + 1, max_batch_size=max_batch_size)
-    # )
+    batched_indices_list = [[_] for _ in indices]
+    batched_indices_list.extend(
+        generate_random_batches(values=indices, min_batch_size=2, max_batch_size=max_batch_size // 2)
+    )
+    batched_indices_list.extend(
+        generate_random_batches(values=indices, min_batch_size=2, max_batch_size=max_batch_size)
+    )
+    batched_indices_list.extend(
+        generate_random_batches(values=indices, min_batch_size=(max_batch_size // 2) + 1, max_batch_size=max_batch_size)
+    )
+    batched_indices_list.extend(
+        generate_random_batches(values=indices, min_batch_size=(max_batch_size // 2) + 1, max_batch_size=max_batch_size)
+    )
+    batched_indices_list.extend(
+        generate_random_batches(values=indices, min_batch_size=(max_batch_size // 2) + 1, max_batch_size=max_batch_size)
+    )
     # assert sorted(list(itertools.chain(*batched_indices_list))) == indices
 
     unique, counts = np.unique([len(_) for _ in batched_indices_list], return_counts=True)
@@ -180,8 +189,8 @@ def generate_generated_pages(
                 page_label += NEW_LINE_TOKEN
             page_label += patch_labels[page_indices[i]]
 
-        if len(page_label) > paragraph_properties["label_length"]["max"]:
-            print("Label longer than longest label in original ChuNom Paragraphs dataset - hence dropping")
+        if len(page_label) > 198:
+            # print("Label longer than longest label in original ChuNom Paragraphs dataset - hence dropping")
             continue
 
         page_crop = join_batch_crops_to_form_page([patch_crops[i] for i in page_indices])
@@ -211,33 +220,23 @@ def join_batch_crops_to_form_page(patch_crops: Sequence[Image.Image]) -> Image.I
     return page_image
 
 
-def generate_random_batches(values: List[Any], num_values: int, max_num_batches: int) -> List[List[Any]]:
+def generate_random_batches(values: List[Any], min_batch_size: int, max_batch_size: int) -> List[List[Any]]:
     """
     Generate random batches of elements in values without replacement and return the list of all batches. Batch sizes
     can be anything between min_batch_size and max_batch_size including the end points.
     """
-    # shuffled_values = values.copy()
-    # random.shuffle(shuffled_values)
-    #
-    # grouped_values_list = []
-    # for i in range(0, repeat):
-    #     start_id = 0
-    #     while start_id < len(shuffled_values):
-    #         num_values = random.randint(min_batch_size, max_batch_size)
-    #         grouped_values_list.append(shuffled_values[start_id: start_id + num_values])
-    #         start_id += num_values
-    #     assert sum([len(_) for _ in grouped_values_list]) == len(values)
-    # return grouped_values_list
     shuffled_values = values.copy()
-    grouped_values_list = []
+    random.shuffle(shuffled_values)
 
-    while len(grouped_values_list) < max_num_batches:
-        random.shuffle(shuffled_values)
-        start_id = 0
-        while start_id < len(shuffled_values) and len(grouped_values_list) < max_num_batches:
-            grouped_values_list.append(shuffled_values[start_id: start_id + num_values])
-            start_id += num_values
+    start_id = 0
+    grouped_values_list = []
+    while start_id < len(shuffled_values):
+        num_values = random.randint(min_batch_size, max_batch_size)
+        grouped_values_list.append(shuffled_values[start_id : start_id + num_values])
+        start_id += num_values
+    assert sum([len(_) for _ in grouped_values_list]) == len(values)
     return grouped_values_list
+
 
 
 if __name__ == "__main__":
