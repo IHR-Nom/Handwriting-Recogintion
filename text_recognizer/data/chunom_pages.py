@@ -14,7 +14,7 @@ from text_recognizer.data import util
 from text_recognizer.data.base_data_module import BaseDataModule, load_and_print_info
 from text_recognizer.data.util import BaseDataset, convert_strings_to_labels, split_dataset
 
-PROCESSED_DATA_DIRNAME = BaseDataModule.data_dirname() / "processed_02" / "chunom_pages"
+PROCESSED_DATA_DIRNAME = BaseDataModule.data_dirname() / "processed_03" / "chunom_pages"
 
 NEW_LINE_TOKEN = "\n"
 TAB_TOKEN = "\t"

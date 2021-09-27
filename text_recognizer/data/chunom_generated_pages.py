@@ -19,7 +19,7 @@ from text_recognizer.data.chunom_pages import (
 from text_recognizer.data.iam_lines import save_images_and_labels, load_line_crops_and_labels
 from text_recognizer.data.util import BaseDataset, convert_strings_to_labels
 
-PROCESSED_DATA_DIRNAME = BaseDataModule.data_dirname() / "processed_02" / "chunom_generated_pages"
+PROCESSED_DATA_DIRNAME = BaseDataModule.data_dirname() / "processed_03" / "chunom_generated_pages"
 RAW_DATA_DIRNAME = "/data1/hong/datasets/chunom/nlp/nlp_data.csv"
 FONT_DIRNAME = "/data1/hong/nom_fonts"
 
@@ -47,6 +47,9 @@ class ChuNomGeneratedPages(ChuNomPages):
         train_size = round(TRAIN_FRAC * len(crops))
         val_size = round(VAL_FRAC * len(crops))
 
+        print(train_size)
+        print(val_size)
+
         print(f"Saving images and labels at {PROCESSED_DATA_DIRNAME}...")
         save_images_and_labels(crops=crops[:train_size], labels=labels[:train_size], split="train",
                                data_dirname=PROCESSED_DATA_DIRNAME)
@@ -62,7 +65,7 @@ class ChuNomGeneratedPages(ChuNomPages):
 
         def _load_dataset(split: str, augment: bool) -> BaseDataset:
             crops, labels = load_line_crops_and_labels(split, PROCESSED_DATA_DIRNAME)
-            X, page_labels = generate_generated_pages(patch_crops=crops, patch_labels=labels, split=split)
+            X, page_labels = generate_generated_pages(patch_crops=crops, patch_labels=labels)
             Y = convert_strings_to_labels(strings=page_labels, mapping=self.inverse_mapping, length=self.output_dims[0])
             transform = get_transform(image_shape=self.dims[1:], augment=augment)  # type: ignore
             return BaseDataset(X, Y, transform=transform)
@@ -70,7 +73,7 @@ class ChuNomGeneratedPages(ChuNomPages):
         if stage == "fit" or stage is None:
             self.data_train = _load_dataset(split="train", augment=self.augment)
             self.data_val = _load_dataset(split="val", augment=self.augment)
-        self.data_test = _load_dataset(split="val", augment=False)
+        self.data_test = _load_dataset(split="test", augment=False)
 
     def __repr__(self) -> str:
         """Print info about the dataset."""
@@ -135,7 +138,7 @@ def generate_patch(patch_label):
 
 
 def generate_generated_pages(
-        patch_crops: List[Image.Image], patch_labels: List[str], split, max_batch_size: int = 20
+        patch_crops: List[Image.Image], patch_labels: List[str], max_batch_size: int = 20
 ) -> Tuple[List[Image.Image], List[str]]:
     """Generate generated pages and corresponding labels by randomly joining different subsets of crops."""
     paragraph_properties = get_dataset_properties()
@@ -242,6 +245,6 @@ def generate_random_batches(values: List[Any], min_batch_size: int, max_batch_si
 if __name__ == "__main__":
     load_and_print_info(ChuNomGeneratedPages)
     crops, labels = load_line_crops_and_labels("train", PROCESSED_DATA_DIRNAME)
-    X, page_labels = generate_generated_pages(patch_crops=crops, patch_labels=labels, split="train")
+    X, page_labels = generate_generated_pages(patch_crops=crops, patch_labels=labels)
     X[10000].save("test.png")
     print(page_labels[10000])

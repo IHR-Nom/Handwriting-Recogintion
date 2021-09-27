@@ -16,16 +16,15 @@ from text_recognizer.data.chunom_pages import (
     NEW_LINE_TOKEN,
     TAB_TOKEN,
     IMAGE_WIDTH,
-    IMAGE_HEIGHT, resize_image, TRAIN_FRAC, VAL_FRAC, TEST_FRAC,
+    IMAGE_HEIGHT, resize_image,
 )
 from text_recognizer.data.iam_lines import save_images_and_labels, load_line_crops_and_labels
 from text_recognizer.data.util import BaseDataset, convert_strings_to_labels
 
-PROCESSED_DATA_DIRNAME = BaseDataModule.data_dirname() / "processed_02" / "chunom_synthetic_pages"
+PROCESSED_DATA_DIRNAME = BaseDataModule.data_dirname() / "processed_03" / "chunom_synthetic_pages"
 RAW_DATA_DIRNAME = "/data1/hong/datasets/chunom/handwritten/patches"
-ORIGINAL_PROCESSED_DATA_DIRNAME = BaseDataModule.data_dirname() / "processed_02" / "chunom_pages"
+ORIGINAL_PROCESSED_DATA_DIRNAME = BaseDataModule.data_dirname() / "processed_03" / "chunom_pages"
 
-MAX_NUM_BATCH = 1000
 
 class ChuNomSyntheticPages(ChuNomPages):
     """
@@ -55,18 +54,17 @@ class ChuNomSyntheticPages(ChuNomPages):
     def setup(self, stage: str = None) -> None:
         print(f"ChuNomSyntheticPages.setup({stage}): Loading train and val ChuNom patch regions ...")
 
-        def _load_dataset(split: str, augment: bool, split_fraction: int) -> BaseDataset:
+        def _load_dataset(split: str, augment: bool) -> BaseDataset:
             crops, labels = load_line_crops_and_labels(split, PROCESSED_DATA_DIRNAME)
-            max_num_batches = round(MAX_NUM_BATCH * split_fraction)
-            X, page_labels = generate_synthetic_pages(patch_crops=crops, patch_labels=labels, max_num_batches=max_num_batches)
+            X, page_labels = generate_synthetic_pages(patch_crops=crops, patch_labels=labels)
             Y = convert_strings_to_labels(strings=page_labels, mapping=self.inverse_mapping, length=self.output_dims[0])
             transform = get_transform(image_shape=self.dims[1:], augment=augment)  # type: ignore
             return BaseDataset(X, Y, transform=transform)
 
         if stage == "fit" or stage is None:
-            self.data_train = _load_dataset(split="train", augment=self.augment, split_fraction=TRAIN_FRAC)
-            self.data_val = _load_dataset(split="val", augment=self.augment, split_fraction=VAL_FRAC)
-        self.data_test = _load_dataset(split="test", augment=False, split_fraction=TEST_FRAC)
+            self.data_train = _load_dataset(split="train", augment=self.augment)
+            self.data_val = _load_dataset(split="val", augment=self.augment)
+        self.data_test = _load_dataset(split="test", augment=False)
 
     def __repr__(self) -> str:
         """Print info about the dataset."""
@@ -125,26 +123,30 @@ def get_patch_crops_and_labels_by_group(all_crops, all_labels, split):
 
 
 def generate_synthetic_pages(
-        patch_crops: List[Image.Image], patch_labels: List[str], max_batch_size: int = 20, max_num_batches: int = 1000
+        patch_crops: List[Image.Image], patch_labels: List[str], max_batch_size: int = 20
 ) -> Tuple[List[Image.Image], List[str]]:
     """Generate synthetic pages and corresponding labels by randomly joining different subsets of crops."""
     paragraph_properties = get_dataset_properties()
 
     indices = list(range(len(patch_labels)))
-    assert max_batch_size // 2 < paragraph_properties["num_lines"]["max"]
+    assert (max_batch_size / 2) < paragraph_properties["num_lines"]["max"]
 
-    batched_indices_list = [[_] for _ in range(0, min(len(indices), max_num_batches))]  # batch_size = 1, len = 4001
-    for i in range(2, max_batch_size + 1):
-        batched_indices_list.extend(
-            generate_random_batches(values=indices, num_values=i, max_num_batches=max_num_batches)
-        )
-    # batched_indices_list.extend(
-    #     generate_random_batches(values=indices, min_batch_size=2, max_batch_size=max_batch_size)
-    # )
-    # batched_indices_list.extend(
-    #     generate_random_batches(values=indices, min_batch_size=(max_batch_size // 2) + 1, max_batch_size=max_batch_size)
-    # )
-    # assert sorted(list(itertools.chain(*batched_indices_list))) == indices
+    batched_indices_list = [[_] for _ in indices]
+    batched_indices_list.extend(
+        generate_random_batches(values=indices, min_batch_size=2, max_batch_size=max_batch_size // 2)
+    )
+    batched_indices_list.extend(
+        generate_random_batches(values=indices, min_batch_size=2, max_batch_size=max_batch_size)
+    )
+    batched_indices_list.extend(
+        generate_random_batches(values=indices, min_batch_size=(max_batch_size // 2) + 1, max_batch_size=max_batch_size)
+    )
+    batched_indices_list.extend(
+        generate_random_batches(values=indices, min_batch_size=(max_batch_size // 2) + 1, max_batch_size=max_batch_size)
+    )
+    batched_indices_list.extend(
+        generate_random_batches(values=indices, min_batch_size=(max_batch_size // 2) + 1, max_batch_size=max_batch_size)
+    )
 
     unique, counts = np.unique([len(_) for _ in batched_indices_list], return_counts=True)
     for batch_len, count in zip(unique, counts):
@@ -207,20 +209,22 @@ def join_batch_crops_to_form_page(patch_crops: Sequence[Image.Image]) -> Image.I
     return image
 
 
-def generate_random_batches(values: List[Any], num_values: int, max_num_batches: int) -> List[List[Any]]:
+def generate_random_batches(values: List[Any], min_batch_size: int, max_batch_size: int, repeat=60) -> List[List[Any]]:
     """
     Generate random batches of elements in values without replacement and return the list of all batches. Batch sizes
     can be anything between min_batch_size and max_batch_size including the end points.
     """
     shuffled_values = values.copy()
-    grouped_values_list = []
+    random.shuffle(shuffled_values)
 
-    while len(grouped_values_list) < max_num_batches:
-        random.shuffle(shuffled_values)
+    grouped_values_list = []
+    for i in range(0, repeat):
         start_id = 0
-        while start_id < len(shuffled_values) and len(grouped_values_list) < max_num_batches:
+        while start_id < len(shuffled_values):
+            num_values = random.randint(min_batch_size, max_batch_size)
             grouped_values_list.append(shuffled_values[start_id: start_id + num_values])
             start_id += num_values
+        # assert sum([len(_) for _ in grouped_values_list]) == len(values)
     return grouped_values_list
 
 
