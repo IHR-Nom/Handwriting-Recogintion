@@ -29,12 +29,12 @@ class ChuNomOriginalAndSyntheticAndGeneratedPages(BaseDataModule):
         return parser
 
     def prepare_data(self, *args, **kwargs) -> None:
-        # self.chunom_pages.prepare_data()
+        self.chunom_pages.prepare_data()
         # self.chunom_syn_pages.prepare_data()
         self.chunom_gen_pages.prepare_data()
 
     def setup(self, stage: str = None) -> None:
-        # self.chunom_pages.setup(stage)
+        self.chunom_pages.setup(stage)
         # self.chunom_syn_pages.setup(stage)
         self.chunom_gen_pages.setup(stage)
 

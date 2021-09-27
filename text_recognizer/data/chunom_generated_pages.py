@@ -24,7 +24,7 @@ RAW_DATA_DIRNAME = "/data1/hong/datasets/chunom/nlp/nlp_data.csv"
 FONT_DIRNAME = "/data1/hong/nom_fonts"
 
 MAX_PATCH_HEIGHT = 250
-MAX_PATCH_WIDTH = 35
+MAX_PATCH_WIDTH = 45
 
 
 class ChuNomGeneratedPages(ChuNomPages):
@@ -96,7 +96,7 @@ def generate_patch_crops_and_labels():
     """Load ChuNom labels and generate crops."""
     crops = []
     labels = []
-    max_patch_len = 16
+    max_patch_len = 8
 
     with open(RAW_DATA_DIRNAME, 'r') as f:
         reader = csv.reader(f)
@@ -125,9 +125,12 @@ def generate_patch(patch_label):
     font = ImageFont.truetype(random_font, random_font_size)
     w, h = drawer.textsize(patch_label[0], font=font)
     y = random.randint(int(h * 3 / 100), int(h * 6 / 100))
+
     for char in patch_label:
         drawer.text(((MAX_PATCH_WIDTH - w) / 2, y), char, font=font, align='center', fill='#FFF')
-        y = y + h
+        # We need to add a small space between characters, otherwise the characters will sit just next to each other
+        # And not be able to distinguish anymore
+        y = y + h + 3
     return image
 
 
@@ -140,13 +143,13 @@ def generate_generated_pages(
     indices = list(range(len(patch_labels)))
     assert (max_batch_size/2) < paragraph_properties["num_lines"]["max"]
 
-    max_num_batches: int = 1000
-    if split == "train":
-        max_num_batches *= TRAIN_FRAC
-    elif split == "val":
-        max_num_batches *= VAL_FRAC
-    elif split == "test":
-        max_num_batches *= TEST_FRAC
+    # max_num_batches: int = 1000
+    # if split == "train":
+    #     max_num_batches *= TRAIN_FRAC
+    # elif split == "val":
+    #     max_num_batches *= VAL_FRAC
+    # elif split == "test":
+    #     max_num_batches *= TEST_FRAC
 
     # batched_indices_list = [[_] for _ in range(0, min(len(indices), int(max_num_batches)))]  # batch_size = 1, len = 4001
     # for i in range(2, max_batch_size + 1):
@@ -164,6 +167,12 @@ def generate_generated_pages(
     batched_indices_list.extend(
         generate_random_batches(values=indices, min_batch_size=(max_batch_size // 2) + 1, max_batch_size=max_batch_size)
     )
+    batched_indices_list.extend(
+        generate_random_batches(values=indices, min_batch_size=(max_batch_size // 2) + 1, max_batch_size=max_batch_size)
+    )
+    batched_indices_list.extend(
+        generate_random_batches(values=indices, min_batch_size=(max_batch_size // 2) + 1, max_batch_size=max_batch_size)
+    )
     # assert sorted(list(itertools.chain(*batched_indices_list))) == indices
 
     unique, counts = np.unique([len(_) for _ in batched_indices_list], return_counts=True)
@@ -174,7 +183,9 @@ def generate_generated_pages(
     for page_indices in batched_indices_list:
         page_label = ""
         for i in range(0, len(page_indices)):
-            if i % 2 == 0 and i != 0:
+            if i % 2 != 0:
+                page_label += TAB_TOKEN
+            elif i % 2 == 0 and i != 0:
                 page_label += NEW_LINE_TOKEN
             page_label += patch_labels[page_indices[i]]
 
@@ -201,8 +212,11 @@ def join_batch_crops_to_form_page(patch_crops: Sequence[Image.Image]) -> Image.I
     page_image = Image.new(mode="L", size=(IMAGE_WIDTH, IMAGE_HEIGHT), color=0)
     current_height = 0
     for i in range(0, len(patch_crops)):
-        page_image.paste(patch_crops[i], box=(0, current_height))
-        current_height += MAX_PATCH_WIDTH
+        if i % 2 == 0:
+            page_image.paste(patch_crops[i], box=(0, current_height))
+        else:
+            page_image.paste(patch_crops[i], box=(IMAGE_WIDTH - MAX_PATCH_HEIGHT, current_height))
+            current_height += MAX_PATCH_WIDTH
     return page_image
 
 
