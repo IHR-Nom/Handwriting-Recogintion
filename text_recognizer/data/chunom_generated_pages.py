@@ -1,6 +1,7 @@
 """ChuNom Generated Pages Dataset class."""
 import csv
 import glob
+import json
 import os
 import random
 from typing import Any, List, Sequence, Tuple
@@ -14,7 +15,7 @@ from text_recognizer.data.chunom_pages import (
     get_dataset_properties,
     get_transform,
     NEW_LINE_TOKEN,
-    TAB_TOKEN, TRAIN_FRAC, VAL_FRAC, IMAGE_WIDTH, IMAGE_HEIGHT, TEST_FRAC,
+    TAB_TOKEN, TRAIN_FRAC, VAL_FRAC, IMAGE_WIDTH, IMAGE_HEIGHT, TEST_FRAC, ESSENTIALS_FILENAME, MAX_LABEL_LENGTH,
 )
 from text_recognizer.data.iam_lines import save_images_and_labels, load_line_crops_and_labels
 from text_recognizer.data.util import BaseDataset, convert_strings_to_labels
@@ -46,9 +47,6 @@ class ChuNomGeneratedPages(ChuNomPages):
         # Splitting dataset with percentage of train-val: 9:1
         train_size = round(TRAIN_FRAC * len(crops))
         val_size = round(VAL_FRAC * len(crops))
-
-        print(train_size)
-        print(val_size)
 
         print(f"Saving images and labels at {PROCESSED_DATA_DIRNAME}...")
         save_images_and_labels(crops=crops[:train_size], labels=labels[:train_size], split="train",
@@ -144,7 +142,7 @@ def generate_generated_pages(
     paragraph_properties = get_dataset_properties()
 
     indices = list(range(len(patch_labels)))
-    assert (max_batch_size/2) < paragraph_properties["num_lines"]["max"]
+    assert (max_batch_size / 2) < paragraph_properties["num_lines"]["max"]
 
     # max_num_batches: int = 1000
     # if split == "train":
@@ -235,16 +233,26 @@ def generate_random_batches(values: List[Any], min_batch_size: int, max_batch_si
     grouped_values_list = []
     while start_id < len(shuffled_values):
         num_values = random.randint(min_batch_size, max_batch_size)
-        grouped_values_list.append(shuffled_values[start_id : start_id + num_values])
+        grouped_values_list.append(shuffled_values[start_id: start_id + num_values])
         start_id += num_values
     assert sum([len(_) for _ in grouped_values_list]) == len(values)
     return grouped_values_list
 
 
-
 if __name__ == "__main__":
     load_and_print_info(ChuNomGeneratedPages)
     crops, labels = load_line_crops_and_labels("train", PROCESSED_DATA_DIRNAME)
-    X, page_labels = generate_generated_pages(patch_crops=crops, patch_labels=labels)
-    X[10000].save("test.png")
-    print(page_labels[10000])
+    print(labels[0])
+    print(labels[1])
+    print(labels[2])
+    # X, page_labels = generate_generated_pages(patch_crops=crops, patch_labels=labels)
+    # with open(ESSENTIALS_FILENAME) as f:
+    #     essentials = json.load(f)
+    # mapping = list(essentials["characters"])
+    # assert mapping is not None
+    # mapping = [*mapping, NEW_LINE_TOKEN, TAB_TOKEN]
+    # inverse_mapping = {v: k for k, v in enumerate(mapping)}
+    # Y = convert_strings_to_labels(strings=page_labels, mapping=inverse_mapping, length=MAX_LABEL_LENGTH)
+    # X[10000].save("test_gen.png")
+    # print(page_labels[10000])
+    # print(Y[10000])

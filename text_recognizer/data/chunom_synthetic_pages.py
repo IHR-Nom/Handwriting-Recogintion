@@ -16,12 +16,12 @@ from text_recognizer.data.chunom_pages import (
     NEW_LINE_TOKEN,
     TAB_TOKEN,
     IMAGE_WIDTH,
-    IMAGE_HEIGHT, resize_image,
+    IMAGE_HEIGHT, resize_image, ESSENTIALS_FILENAME, MAX_LABEL_LENGTH,
 )
 from text_recognizer.data.iam_lines import save_images_and_labels, load_line_crops_and_labels
 from text_recognizer.data.util import BaseDataset, convert_strings_to_labels
 
-PROCESSED_DATA_DIRNAME = BaseDataModule.data_dirname() / "processed_03" / "chunom_synthetic_pages"
+PROCESSED_DATA_DIRNAME = BaseDataModule.data_dirname() / "processed_04" / "chunom_synthetic_pages"
 RAW_DATA_DIRNAME = "/data1/hong/datasets/chunom/handwritten/patches"
 ORIGINAL_PROCESSED_DATA_DIRNAME = BaseDataModule.data_dirname() / "processed_03" / "chunom_pages"
 
@@ -131,7 +131,11 @@ def generate_synthetic_pages(
     indices = list(range(len(patch_labels)))
     assert (max_batch_size / 2) < paragraph_properties["num_lines"]["max"]
 
-    batched_indices_list = [[_] for _ in indices]
+    batched_indices_list = []
+    for i in range(0, 6):
+        batched_indices_list.extend([[_] for _ in indices])
+
+    random.shuffle(batched_indices_list)
     batched_indices_list.extend(
         generate_random_batches(values=indices, min_batch_size=2, max_batch_size=max_batch_size // 2)
     )
@@ -209,7 +213,7 @@ def join_batch_crops_to_form_page(patch_crops: Sequence[Image.Image]) -> Image.I
     return image
 
 
-def generate_random_batches(values: List[Any], min_batch_size: int, max_batch_size: int, repeat=60) -> List[List[Any]]:
+def generate_random_batches(values: List[Any], min_batch_size: int, max_batch_size: int, repeat=50) -> List[List[Any]]:
     """
     Generate random batches of elements in values without replacement and return the list of all batches. Batch sizes
     can be anything between min_batch_size and max_batch_size including the end points.
@@ -230,12 +234,20 @@ def generate_random_batches(values: List[Any], min_batch_size: int, max_batch_si
 
 if __name__ == "__main__":
     load_and_print_info(ChuNomSyntheticPages)
-    # crops, labels = load_line_crops_and_labels("train", PROCESSED_DATA_DIRNAME)
-    # X, page_labels = generate_synthetic_pages(patch_crops=crops, patch_labels=labels)
-    # print(page_labels[0])
-    # X[0].save("/data1/hong/test.png")
-    # all_crops, all_labels = get_all_crops_and_labels()
-    # for file_name in all_labels.keys():
-    #     if all_labels[file_name] in page_labels[0]:
-    #         print(file_name)
-    #         print(all_labels[file_name].encode('utf-8'))
+
+    # Test
+    crops, labels = load_line_crops_and_labels("train", PROCESSED_DATA_DIRNAME)
+    X, page_labels = generate_synthetic_pages(patch_crops=crops, patch_labels=labels)
+    with open(ESSENTIALS_FILENAME) as f:
+        essentials = json.load(f)
+    mapping = list(essentials["characters"])
+    assert mapping is not None
+    mapping = [*mapping, NEW_LINE_TOKEN, TAB_TOKEN]
+    inverse_mapping = {v: k for k, v in enumerate(mapping)}
+    Y = convert_strings_to_labels(strings=page_labels, mapping=inverse_mapping, length=MAX_LABEL_LENGTH)
+    index = random.randint(0, len(X))
+    print(index)
+    print(page_labels[index])
+
+    print(Y[index])
+    X[index].save("/data1/hong/test_syn.png")

@@ -24,3 +24,5 @@ from .iam_original_and_synthetic_paragraphs import IAMOriginalAndSyntheticParagr
 from .chunom_pages import ChuNomPages
 from .chunom_original_and_synthetic_pages import ChuNomOriginalAndSyntheticPages
 from .chunom_original_and_synthetic_and_generated_pages import ChuNomOriginalAndSyntheticAndGeneratedPages
+from .chunom_generated_pages import ChuNomGeneratedPages
+from .chunom_synthetic_pages import ChuNomSyntheticPages

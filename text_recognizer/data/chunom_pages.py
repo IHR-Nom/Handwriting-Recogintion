@@ -1,6 +1,7 @@
 """ChuNom Dataset class."""
 import argparse
 import os
+import random
 from pathlib import Path
 from typing import Dict, Optional, Sequence, Tuple
 import json
@@ -338,3 +339,19 @@ def _num_lines(label: str) -> int:
 
 if __name__ == "__main__":
     load_and_print_info(ChuNomPages)
+
+    # Test
+    crops, labels = load_processed_crops_and_labels("train")
+    X = [crop for crop in crops]
+    with open(ESSENTIALS_FILENAME) as f:
+        essentials = json.load(f)
+    mapping = list(essentials["characters"])
+    assert mapping is not None
+    mapping = [*mapping, NEW_LINE_TOKEN, TAB_TOKEN]
+    inverse_mapping = {v: k for k, v in enumerate(mapping)}
+    Y = convert_strings_to_labels(strings=labels, mapping=inverse_mapping, length=MAX_LABEL_LENGTH)
+    index = random.randint(0, len(X))
+    print(index)
+    X[index].save("test_ori.png")
+    print(labels[index])
+    print(Y[index])
