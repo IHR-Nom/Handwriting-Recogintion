@@ -1,31 +1,35 @@
 """ChuNom Generated Pages Dataset class."""
 import csv
 import glob
-import json
 import os
 import random
 from typing import Any, List, Sequence, Tuple
 
 import numpy as np
+import torchvision.transforms
 from PIL import Image, ImageOps, ImageDraw, ImageFont
 
+from text_recognizer.data import augmentation
 from text_recognizer.data.base_data_module import BaseDataModule, load_and_print_info
 from text_recognizer.data.chunom_pages import (
     ChuNomPages,
     get_dataset_properties,
     get_transform,
     NEW_LINE_TOKEN,
-    TAB_TOKEN, TRAIN_FRAC, VAL_FRAC, IMAGE_WIDTH, IMAGE_HEIGHT, TEST_FRAC, ESSENTIALS_FILENAME, MAX_LABEL_LENGTH,
-)
+    TAB_TOKEN, TRAIN_FRAC, VAL_FRAC, IMAGE_WIDTH, IMAGE_HEIGHT, )
 from text_recognizer.data.iam_lines import save_images_and_labels, load_line_crops_and_labels
 from text_recognizer.data.util import BaseDataset, convert_strings_to_labels
 
-PROCESSED_DATA_DIRNAME = BaseDataModule.data_dirname() / "processed_03" / "chunom_generated_pages"
+PROCESSED_DATA_DIRNAME = BaseDataModule.data_dirname() / "processed_01" / "chunom_generated_pages"
 RAW_DATA_DIRNAME = "/data1/hong/datasets/chunom/nlp/nlp_data.csv"
 FONT_DIRNAME = "/data1/hong/nom_fonts"
 
 MAX_PATCH_HEIGHT = 250
 MAX_PATCH_WIDTH = 45
+
+aug = torchvision.transforms.Compose([
+    augmentation.GridDistortion(), augmentation.ImgAugTransform(), torchvision.transforms.ToPILImage()
+])
 
 
 class ChuNomGeneratedPages(ChuNomPages):
@@ -121,14 +125,14 @@ def generate_patch_crops_and_labels():
 def generate_patch(patch_label):
     image = Image.new('RGB', (MAX_PATCH_WIDTH, MAX_PATCH_HEIGHT), (0, 0, 0))
     drawer = ImageDraw.Draw(image)
-    random_font_size = random.randint(25, 28)
+    random_font_size = random.randint(27, 29)
     random_font = random.choice(glob.glob(os.path.join(FONT_DIRNAME, '*.[o|t]tf')))
     font = ImageFont.truetype(random_font, random_font_size)
     w, h = drawer.textsize(patch_label[0], font=font)
     y = random.randint(int(h * 3 / 100), int(h * 6 / 100))
 
     for char in patch_label:
-        drawer.text(((MAX_PATCH_WIDTH - w) / 2, y), char, font=font, align='center', fill='#FFF')
+        drawer.text(((MAX_PATCH_WIDTH - w) / 2, y), char, font=font, align='center', fill=(184, 184, 184))
         # We need to add a small space between characters, otherwise the characters will sit just next to each other
         # And not be able to distinguish anymore
         y = y + h + 3
@@ -136,7 +140,7 @@ def generate_patch(patch_label):
 
 
 def generate_generated_pages(
-        patch_crops: List[Image.Image], patch_labels: List[str], max_batch_size: int = 20
+        patch_crops: List[Image.Image], patch_labels: List[str], max_batch_size: int = 14
 ) -> Tuple[List[Image.Image], List[str]]:
     """Generate generated pages and corresponding labels by randomly joining different subsets of crops."""
     paragraph_properties = get_dataset_properties()
@@ -176,6 +180,7 @@ def generate_generated_pages(
     )
     # assert sorted(list(itertools.chain(*batched_indices_list))) == indices
 
+    # batched_indices_list = [[3, 3, 3, 4, 5, 6, 7, 8, 3, 3, 3, 4, 5, 6]]
     unique, counts = np.unique([len(_) for _ in batched_indices_list], return_counts=True)
     for batch_len, count in zip(unique, counts):
         print(f"{count} samples with {batch_len} lines")
@@ -218,6 +223,7 @@ def join_batch_crops_to_form_page(patch_crops: Sequence[Image.Image]) -> Image.I
         else:
             page_image.paste(patch_crops[i], box=(IMAGE_WIDTH - MAX_PATCH_HEIGHT, current_height))
             current_height += MAX_PATCH_WIDTH
+    page_image = aug(page_image)
     return page_image
 
 
@@ -242,10 +248,8 @@ def generate_random_batches(values: List[Any], min_batch_size: int, max_batch_si
 if __name__ == "__main__":
     load_and_print_info(ChuNomGeneratedPages)
     crops, labels = load_line_crops_and_labels("train", PROCESSED_DATA_DIRNAME)
-    print(labels[0])
-    print(labels[1])
-    print(labels[2])
-    # X, page_labels = generate_generated_pages(patch_crops=crops, patch_labels=labels)
+    X, page_labels = generate_generated_pages(patch_crops=crops, patch_labels=labels)
+    X[0].save("test_gen.png")
     # with open(ESSENTIALS_FILENAME) as f:
     #     essentials = json.load(f)
     # mapping = list(essentials["characters"])

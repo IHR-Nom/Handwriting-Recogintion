@@ -1,21 +1,21 @@
 """ChuNom Dataset class."""
 import argparse
+import json
 import os
 import random
 from pathlib import Path
 from typing import Dict, Optional, Sequence, Tuple
-import json
 
 import cv2
 import numpy as np
-from PIL import Image, ImageOps
 import torchvision.transforms as transforms
+from PIL import Image, ImageOps
 
 from text_recognizer.data import util
 from text_recognizer.data.base_data_module import BaseDataModule, load_and_print_info
-from text_recognizer.data.util import BaseDataset, convert_strings_to_labels, split_dataset
+from text_recognizer.data.util import BaseDataset, convert_strings_to_labels
 
-PROCESSED_DATA_DIRNAME = BaseDataModule.data_dirname() / "processed_03" / "chunom_pages"
+PROCESSED_DATA_DIRNAME = BaseDataModule.data_dirname() / "processed_01" / "chunom_pages"
 
 NEW_LINE_TOKEN = "\n"
 TAB_TOKEN = "\t"
@@ -25,12 +25,13 @@ TEST_FRAC = 0.05
 
 IMAGE_SCALE_FACTOR = 2
 FINAL_IMAGE_HEIGHT = 388
-FINAL_IMAGE_WIDTH = 568
+FINAL_IMAGE_WIDTH = 615
 IMAGE_HEIGHT = 365
-IMAGE_WIDTH = 545
+IMAGE_WIDTH = 600
 MAX_LABEL_LENGTH = 200
 
-ESSENTIALS_FILENAME = Path(__file__).parents[0].resolve() / "chunom_characters_01.json"
+
+ESSENTIALS_FILENAME = Path(__file__).parents[0].resolve() / "chunom_characters_handwritten.json"
 RAW_DATA_DIRNAME = "/data1/hong/datasets/chunom/handwritten/pages"
 
 
@@ -156,31 +157,34 @@ def get_page_crops_and_labels() -> Tuple[Dict[str, Image.Image], Dict[str, str]]
         for img in os.listdir(os.path.join(RAW_DATA_DIRNAME, img_folder, "images")):
             page_filenames.append(os.path.join(RAW_DATA_DIRNAME, img_folder, "images", img))
     for page_filename in page_filenames:
-        image = Image.open(page_filename)
-        image = ImageOps.invert(image)
-        parent_dir = util.get_parent_folder(page_filename, 2)
-        image_name = os.path.relpath(page_filename, parent_dir)
-        bounding_box = get_image_size(image_name, os.path.join(parent_dir, "bboxes.json"))
-        if bounding_box is None:
+        if "nlvnpf-0059-090.jpg" in page_filename or "page43b.jpg" in page_filename:
             continue
-        lines = get_image_ground_truth(image_name, os.path.join(parent_dir, "annotation.json"))
-        if lines is None:
-            continue
-        image = image.crop(bounding_box)
-        # Rotate image to easy get to labels due to chunom are written from right to left, top to bottom
-        image = image.rotate(90, fillcolor=(0, 0, 0), expand=1)
-        # Resize image to make sure image size is smaller than page size
-        width, height = image.size
-        ratio_w = IMAGE_WIDTH / width
-        ratio_h = IMAGE_HEIGHT / height
-        scale = min(ratio_h, ratio_w)
-        image = resize_image(image, scale)
-        # Add image to the background
-        page_image = Image.new(mode="L", size=(IMAGE_WIDTH, IMAGE_HEIGHT), color=0)
-        page_image.paste(image, box=(0, 0))
-        page_image = ImageOps.grayscale(page_image)
-        crops[os.path.basename(page_filename)] = page_image
-        labels[os.path.basename(page_filename)] = lines
+        else:
+            image = Image.open(page_filename)
+            image = ImageOps.invert(image)
+            parent_dir = util.get_parent_folder(page_filename, 2)
+            image_name = os.path.relpath(page_filename, parent_dir)
+            bounding_box = get_image_size(image_name, os.path.join(parent_dir, "bboxes.json"))
+            if bounding_box is None:
+                continue
+            lines = get_image_ground_truth(image_name, os.path.join(parent_dir, "annotation.json"))
+            if lines is None:
+                continue
+            image = image.crop(bounding_box)
+            # Rotate image to easy get to labels due to chunom are written from right to left, top to bottom
+            image = image.rotate(90, fillcolor=(0, 0, 0), expand=1)
+            # Resize image to make sure image size is smaller than page size
+            width, height = image.size
+            ratio_w = IMAGE_WIDTH / width
+            ratio_h = IMAGE_HEIGHT / height
+            scale = min(ratio_h, ratio_w)
+            image = resize_image(image, scale)
+            # Add image to the background
+            page_image = Image.new(mode="L", size=(IMAGE_WIDTH, IMAGE_HEIGHT), color=0)
+            page_image.paste(image, box=(0, 0))
+            page_image = ImageOps.grayscale(page_image)
+            crops[os.path.basename(page_filename)] = page_image
+            labels[os.path.basename(page_filename)] = lines
     assert len(crops) == len(labels)
     return crops, labels
 

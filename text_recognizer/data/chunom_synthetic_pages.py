@@ -1,9 +1,10 @@
 """ChuNom Synthetic Pages Dataset class."""
+import copy
 import json
 import math
 import os
 import random
-from typing import Any, List, Sequence, Tuple
+from typing import Any, List, Sequence, Tuple, Dict
 
 import numpy as np
 from PIL import Image, ImageOps
@@ -16,14 +17,13 @@ from text_recognizer.data.chunom_pages import (
     NEW_LINE_TOKEN,
     TAB_TOKEN,
     IMAGE_WIDTH,
-    IMAGE_HEIGHT, resize_image, ESSENTIALS_FILENAME, MAX_LABEL_LENGTH,
-)
+    IMAGE_HEIGHT,)
 from text_recognizer.data.iam_lines import save_images_and_labels, load_line_crops_and_labels
 from text_recognizer.data.util import BaseDataset, convert_strings_to_labels
 
-PROCESSED_DATA_DIRNAME = BaseDataModule.data_dirname() / "processed_04" / "chunom_synthetic_pages"
+PROCESSED_DATA_DIRNAME = BaseDataModule.data_dirname() / "processed_01" / "chunom_synthetic_pages"
 RAW_DATA_DIRNAME = "/data1/hong/datasets/chunom/handwritten/patches"
-ORIGINAL_PROCESSED_DATA_DIRNAME = BaseDataModule.data_dirname() / "processed_03" / "chunom_pages"
+ORIGINAL_PROCESSED_DATA_DIRNAME = BaseDataModule.data_dirname() / "processed_01" / "chunom_pages"
 
 
 class ChuNomSyntheticPages(ChuNomPages):
@@ -41,15 +41,15 @@ class ChuNomSyntheticPages(ChuNomPages):
         print("Getting ChuNom lines and loading labels...")
 
         all_crops, all_labels = get_all_crops_and_labels()
-        train_crops, train_labels = get_patch_crops_and_labels_by_group(all_crops, all_labels, "train")
-        val_crops, val_labels = get_patch_crops_and_labels_by_group(all_crops, all_labels, "val")
-        test_crops, test_labels = get_patch_crops_and_labels_by_group(all_crops, all_labels, "test")
+        train_crops, train_labels, train_names = get_patch_crops_and_labels_by_group(all_crops, all_labels, "train")
+        val_crops, val_labels, val_names = get_patch_crops_and_labels_by_group(all_crops, all_labels, "val")
+        test_crops, test_labels, test_names = get_patch_crops_and_labels_by_group(all_crops, all_labels, "test")
 
         print(f"Saving images and labels at {PROCESSED_DATA_DIRNAME}...")
-        save_images_and_labels(crops=train_crops, labels=train_labels, split="train",
+        save_images_and_labels(crops=train_crops, labels=train_labels, names=train_names, split="train",
                                data_dirname=PROCESSED_DATA_DIRNAME)
-        save_images_and_labels(crops=val_crops, labels=val_labels, split="val", data_dirname=PROCESSED_DATA_DIRNAME)
-        save_images_and_labels(crops=test_crops, labels=test_labels, split="test", data_dirname=PROCESSED_DATA_DIRNAME)
+        save_images_and_labels(crops=val_crops, labels=val_labels, names=val_names, split="val", data_dirname=PROCESSED_DATA_DIRNAME)
+        save_images_and_labels(crops=test_crops, labels=test_labels, names=test_names, split="test", data_dirname=PROCESSED_DATA_DIRNAME)
 
     def setup(self, stage: str = None) -> None:
         print(f"ChuNomSyntheticPages.setup({stage}): Loading train and val ChuNom patch regions ...")
@@ -97,6 +97,16 @@ def get_all_crops_and_labels():
                 image = ImageOps.grayscale(image)
                 image = ImageOps.invert(image)
                 image = image.rotate(90, fillcolor=(0, 0, 0), expand=1)
+                # # Resize patch
+                # width, height = image.size
+                # ratio_w = MAX_PATCH_WIDTH / width
+                # ratio_h = MAX_PATCH_HEIGHT / height
+                # scale = min(ratio_h, ratio_w)
+                # resized_image = resize_image(image, scale)
+                # # Add image to the background
+                # batch_image = Image.new(mode="L", size=(MAX_PATCH_WIDTH, MAX_PATCH_HEIGHT), color=0)
+                # image.paste(para_image, box=(0, 0))
+
                 all_crops[os.path.basename(image_name)] = image
                 image_annotation = json.load(open(os.path.join(RAW_DATA_DIRNAME, file_name)))
                 label = "".join(image_annotation[0]["hn_text"])
@@ -110,6 +120,7 @@ def get_patch_crops_and_labels_by_group(all_crops, all_labels, split):
     """Load ChuNom patches and labels."""
     crops = []
     labels = []
+    crop_names = []
     # Re-splitting dataset follow the original sets
     for split_crop_name in json.load(
             open(os.path.join(ORIGINAL_PROCESSED_DATA_DIRNAME / split, "_labels.json"))).keys():
@@ -117,18 +128,25 @@ def get_patch_crops_and_labels_by_group(all_crops, all_labels, split):
             if split_crop_name in crop_name:
                 crops.append(all_crops[crop_name])
                 labels.append(all_labels[crop_name])
+                crop_names.append(crop_name)
 
     assert len(crops) == len(labels)
-    return crops, labels
+    return crops, labels, crop_names
 
 
 def generate_synthetic_pages(
-        patch_crops: List[Image.Image], patch_labels: List[str], max_batch_size: int = 20
+        patch_crops: List[Image.Image], patch_labels: List[str], max_batch_size: int = 14
 ) -> Tuple[List[Image.Image], List[str]]:
     """Generate synthetic pages and corresponding labels by randomly joining different subsets of crops."""
     paragraph_properties = get_dataset_properties()
 
     indices = list(range(len(patch_labels)))
+    indicate_lengths = {'short': [], 'long': []}
+    for i, x in enumerate(patch_labels):
+        if len(x) <= 6:
+            indicate_lengths['short'].append(i)
+        else:
+            indicate_lengths['long'].append(i)
     assert (max_batch_size / 2) < paragraph_properties["num_lines"]["max"]
 
     batched_indices_list = []
@@ -137,19 +155,22 @@ def generate_synthetic_pages(
 
     random.shuffle(batched_indices_list)
     batched_indices_list.extend(
-        generate_random_batches(values=indices, min_batch_size=2, max_batch_size=max_batch_size // 2)
+        generate_random_batches(lengths=indicate_lengths, min_batch_size=2, max_batch_size=max_batch_size // 2)
     )
     batched_indices_list.extend(
-        generate_random_batches(values=indices, min_batch_size=2, max_batch_size=max_batch_size)
+        generate_random_batches(lengths=indicate_lengths, min_batch_size=2, max_batch_size=max_batch_size)
     )
     batched_indices_list.extend(
-        generate_random_batches(values=indices, min_batch_size=(max_batch_size // 2) + 1, max_batch_size=max_batch_size)
+        generate_random_batches(lengths=indicate_lengths, min_batch_size=(max_batch_size // 2) + 1,
+                                max_batch_size=max_batch_size)
     )
     batched_indices_list.extend(
-        generate_random_batches(values=indices, min_batch_size=(max_batch_size // 2) + 1, max_batch_size=max_batch_size)
+        generate_random_batches(lengths=indicate_lengths, min_batch_size=(max_batch_size // 2) + 1,
+                                max_batch_size=max_batch_size)
     )
     batched_indices_list.extend(
-        generate_random_batches(values=indices, min_batch_size=(max_batch_size // 2) + 1, max_batch_size=max_batch_size)
+        generate_random_batches(lengths=indicate_lengths, min_batch_size=(max_batch_size // 2) + 1,
+                                max_batch_size=max_batch_size)
     )
 
     unique, counts = np.unique([len(_) for _ in batched_indices_list], return_counts=True)
@@ -169,8 +190,10 @@ def generate_synthetic_pages(
         if len(page_label) > paragraph_properties["label_length"]["max"]:
             print("Label longer than longest label in original ChuNom Paragraphs dataset - hence dropping")
             continue
-
-        page_crop = join_batch_crops_to_form_page([patch_crops[i] for i in page_indices])
+        try:
+            page_crop = join_batch_crops_to_form_page([patch_crops[i] for i in page_indices])
+        except:
+            continue
         # max_para_shape = paragraph_properties["crop_shape"]["max"]
         # if page_crop.height > max_para_shape[0] or page_crop.width > max_para_shape[1]:
         #     print("Crop larger than largest crop in original ChuNom Paragraphs dataset - hence dropping")
@@ -188,38 +211,65 @@ def join_batch_crops_to_form_page(patch_crops: Sequence[Image.Image]) -> Image.I
     crop_shapes = np.array([_.size[::-1] for _ in patch_crops])
     max_patch_height = crop_shapes[:, 0].max()
     max_patch_width = crop_shapes[:, 1].max()
-    indent = int(max_patch_width * 0.2)
-    page_height = max_patch_height * (math.ceil(len(patch_crops) / 2))
-    page_width = max_patch_width * 2 + indent
+    indent = int(max_patch_width * 0.16)
+    n_lines = math.ceil(len(patch_crops) / 2)
+    line_gap = round((IMAGE_HEIGHT - max_patch_height * n_lines) / n_lines)
+    # scale_height = 1.35
+    page_height = IMAGE_HEIGHT
+    page_width = IMAGE_WIDTH
     # Paste patch images into to page image
     para_image = Image.new(mode="L", size=(page_width, page_height), color=0)
+    second_col_start = max_patch_width + indent
+    if crop_shapes[:, 1].argmax() % 2 == 1:
+        # Long sentence is located in the second column
+        second_col_start = IMAGE_WIDTH - max_patch_width
     current_height = 0
     for i in range(0, len(patch_crops)):
         if i % 2 == 0:
             para_image.paste(patch_crops[i], box=(0, current_height))
         else:
-            para_image.paste(patch_crops[i], box=(page_width - max_patch_width, current_height))
-            current_height += max_patch_height
+            if second_col_start + crop_shapes[i][1] > IMAGE_WIDTH:
+                raise Exception('Size incorrect')
+            para_image.paste(patch_crops[i], box=(second_col_start, current_height))
+        if len(patch_crops) == 1 or i % 2 != 0:
+            current_height += max_patch_height + line_gap
+    para_image = para_image.crop(box=(0, 0, page_width, current_height - line_gap))
     # Resize image to make sure image size is smaller than page size
     width, height = para_image.size
-    ratio_w = IMAGE_WIDTH / width
-    ratio_h = IMAGE_HEIGHT / height
-    scale = min(ratio_h, ratio_w)
-    para_image = resize_image(para_image, scale)
+    # ratio_w = IMAGE_WIDTH / width
+    # ratio_h = IMAGE_HEIGHT / height
+    # scale = min(ratio_h, ratio_w)
+    # para_image = resize_image(para_image, scale)
     # Add image to the background
+
+    if width > IMAGE_WIDTH or height > IMAGE_HEIGHT:
+        raise Exception(f"with: {width}, height: {height}")
     image = Image.new(mode="L", size=(IMAGE_WIDTH, IMAGE_HEIGHT), color=0)
     image.paste(para_image, box=(0, 0))
     image = ImageOps.grayscale(image)
     return image
 
 
-def generate_random_batches(values: List[Any], min_batch_size: int, max_batch_size: int, repeat=50) -> List[List[Any]]:
+def generate_random_batches(lengths: Dict[str, List[Any]], min_batch_size: int, max_batch_size: int, repeat=50) -> List[
+    List[Any]]:
     """
     Generate random batches of elements in values without replacement and return the list of all batches. Batch sizes
     can be anything between min_batch_size and max_batch_size including the end points.
     """
-    shuffled_values = values.copy()
-    random.shuffle(shuffled_values)
+    shuffled_lengths = copy.deepcopy(lengths)
+    random.shuffle(shuffled_lengths['short'])
+    random.shuffle(shuffled_lengths['long'])
+
+    shuffled_values = []
+    idx = 0
+    while True:
+        if len(shuffled_lengths['long']) == 0 or len(shuffled_lengths['short']) == 0:
+            break
+        if idx % 2 == 0:
+            shuffled_values.append(shuffled_lengths['long'].pop())
+        else:
+            shuffled_values.append(shuffled_lengths['short'].pop())
+        idx += 1
 
     grouped_values_list = []
     for i in range(0, repeat):
@@ -236,18 +286,10 @@ if __name__ == "__main__":
     load_and_print_info(ChuNomSyntheticPages)
 
     # Test
-    crops, labels = load_line_crops_and_labels("train", PROCESSED_DATA_DIRNAME)
-    X, page_labels = generate_synthetic_pages(patch_crops=crops, patch_labels=labels)
-    with open(ESSENTIALS_FILENAME) as f:
-        essentials = json.load(f)
-    mapping = list(essentials["characters"])
-    assert mapping is not None
-    mapping = [*mapping, NEW_LINE_TOKEN, TAB_TOKEN]
-    inverse_mapping = {v: k for k, v in enumerate(mapping)}
-    Y = convert_strings_to_labels(strings=page_labels, mapping=inverse_mapping, length=MAX_LABEL_LENGTH)
+    for mode in ['train', 'val', 'test']:
+        crops, labels = load_line_crops_and_labels(mode, PROCESSED_DATA_DIRNAME)
+        with open(PROCESSED_DATA_DIRNAME / mode / "_names.json") as f:
+            names = json.load(f)
+        X, page_labels = generate_synthetic_pages(patch_crops=crops, patch_labels=labels)
     index = random.randint(0, len(X))
-    print(index)
-    print(page_labels[index])
-
-    print(Y[index])
-    X[index].save("/data1/hong/test_syn.png")
+    X[index].save("test_syn.png")

@@ -140,13 +140,15 @@ def line_crops_and_labels(iam: IAM, split: str):
     return crops, labels
 
 
-def save_images_and_labels(crops: Sequence[Image.Image], labels: Sequence[str], split: str, data_dirname: Path):
+def save_images_and_labels(crops: Sequence[Image.Image], labels: Sequence[str], split: str, data_dirname: Path, names=None):
     (data_dirname / split).mkdir(parents=True, exist_ok=True)
 
     with open(data_dirname / split / "_labels.json", "w") as f:
         json.dump(labels, f)
     for ind, crop in enumerate(crops):
         crop.save(data_dirname / split / f"{ind}.png")
+    with open(data_dirname / split / '_names.json', 'w') as f:
+        json.dump(names, f)
 
 
 def load_line_crops_and_labels(split: str, data_dirname: Path):
