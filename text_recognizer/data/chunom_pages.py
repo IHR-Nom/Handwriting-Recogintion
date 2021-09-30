@@ -8,10 +8,11 @@ from typing import Dict, Optional, Sequence, Tuple
 
 import cv2
 import numpy as np
+import torchvision
 import torchvision.transforms as transforms
 from PIL import Image, ImageOps
 
-from text_recognizer.data import util
+from text_recognizer.data import util, augmentation
 from text_recognizer.data.base_data_module import BaseDataModule, load_and_print_info
 from text_recognizer.data.util import BaseDataset, convert_strings_to_labels
 
@@ -296,6 +297,9 @@ def get_transform(image_shape: Tuple[int, int], augment: bool) -> transforms.Com
             transforms.RandomCrop(  # random pad image to image_shape with 0
                 size=image_shape, padding=None, pad_if_needed=True, fill=0, padding_mode="constant"
             ),
+            augmentation.GridDistortion(),
+            augmentation.ImgAugTransform(),
+            torchvision.transforms.ToPILImage(),
             transforms.ColorJitter(brightness=(0.8, 1.3))
         ]
     else:

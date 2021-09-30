@@ -150,7 +150,7 @@ def generate_synthetic_pages(
     assert (max_batch_size / 2) < paragraph_properties["num_lines"]["max"]
 
     batched_indices_list = []
-    for i in range(0, 6):
+    for i in range(0, 2):
         batched_indices_list.extend([[_] for _ in indices])
 
     random.shuffle(batched_indices_list)
@@ -190,10 +190,7 @@ def generate_synthetic_pages(
         if len(page_label) > paragraph_properties["label_length"]["max"]:
             print("Label longer than longest label in original ChuNom Paragraphs dataset - hence dropping")
             continue
-        try:
-            page_crop = join_batch_crops_to_form_page([patch_crops[i] for i in page_indices])
-        except:
-            continue
+        page_crop = join_batch_crops_to_form_page([patch_crops[i] for i in page_indices])
         # max_para_shape = paragraph_properties["crop_shape"]["max"]
         # if page_crop.height > max_para_shape[0] or page_crop.width > max_para_shape[1]:
         #     print("Crop larger than largest crop in original ChuNom Paragraphs dataset - hence dropping")
@@ -206,14 +203,13 @@ def generate_synthetic_pages(
     return page_crops, page_labels
 
 
-def join_batch_crops_to_form_page(patch_crops: Sequence[Image.Image]) -> Image.Image:
+def join_batch_crops_to_form_page(patch_crops: Sequence[Image.Image], max_n_lines=7) -> Image.Image:
     """Horizontally stack line crops and return a single image forming the paragraph."""
     crop_shapes = np.array([_.size[::-1] for _ in patch_crops])
     max_patch_height = crop_shapes[:, 0].max()
     max_patch_width = crop_shapes[:, 1].max()
     indent = int(max_patch_width * 0.16)
-    n_lines = math.ceil(len(patch_crops) / 2)
-    line_gap = round((IMAGE_HEIGHT - max_patch_height * n_lines) / n_lines)
+    line_gap = round((IMAGE_HEIGHT - max_patch_height * max_n_lines) / max_n_lines)
     # scale_height = 1.35
     page_height = IMAGE_HEIGHT
     page_width = IMAGE_WIDTH
@@ -233,24 +229,24 @@ def join_batch_crops_to_form_page(patch_crops: Sequence[Image.Image]) -> Image.I
             para_image.paste(patch_crops[i], box=(second_col_start, current_height))
         if len(patch_crops) == 1 or i % 2 != 0:
             current_height += max_patch_height + line_gap
-    para_image = para_image.crop(box=(0, 0, page_width, current_height - line_gap))
+    # para_image = para_image.crop(box=(0, 0, page_width, current_height - line_gap))
     # Resize image to make sure image size is smaller than page size
-    width, height = para_image.size
+    # width, height = para_image.size
     # ratio_w = IMAGE_WIDTH / width
     # ratio_h = IMAGE_HEIGHT / height
     # scale = min(ratio_h, ratio_w)
     # para_image = resize_image(para_image, scale)
     # Add image to the background
 
-    if width > IMAGE_WIDTH or height > IMAGE_HEIGHT:
-        raise Exception(f"with: {width}, height: {height}")
-    image = Image.new(mode="L", size=(IMAGE_WIDTH, IMAGE_HEIGHT), color=0)
-    image.paste(para_image, box=(0, 0))
-    image = ImageOps.grayscale(image)
+    # if width > IMAGE_WIDTH or height > IMAGE_HEIGHT:
+    #     raise Exception(f"with: {width}, height: {height}")
+    # image = Image.new(mode="L", size=(IMAGE_WIDTH, IMAGE_HEIGHT), color=0)
+    # image.paste(para_image, box=(0, 0))
+    image = ImageOps.grayscale(para_image)
     return image
 
 
-def generate_random_batches(lengths: Dict[str, List[Any]], min_batch_size: int, max_batch_size: int, repeat=50) -> List[
+def generate_random_batches(lengths: Dict[str, List[Any]], min_batch_size: int, max_batch_size: int, repeat=1) -> List[
     List[Any]]:
     """
     Generate random batches of elements in values without replacement and return the list of all batches. Batch sizes
